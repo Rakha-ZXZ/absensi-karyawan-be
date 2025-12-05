@@ -1,0 +1,104 @@
+import mongoose from "mongoose";
+import bcrypt from "bcrypt";
+
+const EmployeeSchema = new mongoose.Schema(
+  {
+    employerId: {
+      type: String,
+      unique: true,
+    },
+    nama: {
+      type: String,
+      required: [true, "Nama wajib diisi"],
+    },
+    jabatan: {
+      type: String,
+      enum: [
+        "Software Developer",
+        "Project Manager",
+        "UI/UX Designer",
+        "QA Engineer",
+        "HR Staff",
+        "Marketing Specialist",
+      ],
+    },
+    departemen: {
+      type: String,
+      enum: [
+        "Teknologi Informasi",
+        "Human Resources",
+        "Marketing",
+        "Finance",
+        "Operations",
+      ],
+    },
+    nomorTelepon: {
+      type: String,
+    },
+    alamat: {
+      type: String,
+    },
+    email: {
+      type: String,
+      unique: true,
+      // Validasi match hanya berjalan jika field tidak kosong
+      // sparse: true akan mengizinkan nilai null/kosong untuk field yang unik
+      sparse: true, 
+      match: [/.+\@.+\..+/, "Harap masukkan email yang valid"],
+    },
+    password: {
+      type: String,
+      required: [true, "Password wajib diisi"],
+      minlength: [6, "Password minimal 6 karakter"],
+    },
+    tanggalMasuk: {
+      type: Date,
+      default: Date.now,
+    },
+    status: {
+      type: String,
+      enum: ["Aktif", "Tidak Aktif", "Cuti"],
+      default: "Aktif",
+    },
+    role: {
+      type: String,
+      default: "employee",
+    },
+  },
+  { timestamps: true }
+);
+
+// Middleware untuk hash password sebelum menyimpan
+EmployeeSchema.pre("save", async function () { // Hapus 'next' dari parameter
+  // Hanya jalankan jika dokumen ini baru (pertama kali dibuat)
+  if (this.isNew) {
+    let isUnique = false;
+    let generatedId;
+    // Loop untuk memastikan ID yang dibuat benar-benar unik
+    while (!isUnique) {
+      // Buat ID acak dengan format EMP-XXXXXX
+      const randomNum = Math.floor(100000 + Math.random() * 900000);
+      generatedId = `EMP-${randomNum}`;
+      // Cek apakah ID sudah ada di database
+      const existingEmployee = await this.constructor.findOne({ employerId: generatedId });
+      if (!existingEmployee) {
+        isUnique = true;
+      }
+    }
+    this.employerId = generatedId;
+  }
+
+  // Hash password jika field password dimodifikasi (atau baru)
+  if (this.isModified("password")) {
+    const salt = await bcrypt.genSalt(10);
+    this.password = await bcrypt.hash(this.password, salt);
+  }
+  
+});
+
+// Method untuk membandingkan password saat login
+EmployeeSchema.methods.comparePassword = async function (enteredPassword) {
+  return await bcrypt.compare(enteredPassword, this.password);
+};
+
+export default mongoose.model("Employee", EmployeeSchema);

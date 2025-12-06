@@ -11,7 +11,7 @@ const generateToken = (res, userId, userRole) => {
   const cookieOptions = {
     httpOnly: true,
     secure: process.env.NODE_ENV !== "development", // true di production
-    sameSite: "strict", // Mencegah serangan CSRF
+    sameSite: "lax", // Mencegah serangan CSRF
     expires: new Date(Date.now() + 24 * 60 * 60 * 1000) // Log juga waktu kedaluwarsa
   };
   

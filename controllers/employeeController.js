@@ -1,6 +1,5 @@
 import Employee from "../models/Employee.js";
 import asyncHandler from 'express-async-handler';
-import generateToken from "../middlewares/generateToken.js";
 import mongoose from 'mongoose';
 
 /**

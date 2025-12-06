@@ -35,6 +35,9 @@ mongoose
   res.send("Backend is Running ✅");
 });
 
+console.log('CWD:', process.cwd()); // Current Working Directory
+console.log('Trying to load route from:', require.resolve('../routes/authRoutes')); 
+// Jika ini gagal, itu menunjukkan masalah jalur.
 // Routes
 app.use("/api/admin", require("../routes/adminRoutes"));
 app.use("/api/auth", require("../routes/authRoutes"));

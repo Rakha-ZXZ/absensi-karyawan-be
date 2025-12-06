@@ -14,10 +14,7 @@ const app = express();
 
 // Middleware CORS
 const allowedOrigins = [
-  'http://localhost:5173',
-  'https://absensi-pekerja-fe.vercel.app',
-  // Tambahkan URL Vercel Preview/Development Anda juga jika ada (tanpa trailing slash)
-  // Contoh: 'https://absensi-pekerja-fe-git-main-afzaals-projects-c2614662.vercel.app' 
+  'http://localhost:5173'  
 ];
 
 app.use(cors({

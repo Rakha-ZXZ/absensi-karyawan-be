@@ -1,56 +1,46 @@
-// File: api/server.js (Gunakan CommonJS)
+import express from "express";
+import mongoose from "mongoose";
+import cors from "cors";
+import dotenv from "dotenv";
+import adminRoutes from "../routes/adminRoutes.js";
+import authRoutes from "../routes/authRoutes.js";
+import employeeRoutes from "../routes/employeeRoutes.js"
+import attendanceRoutes from "../routes/attendanceRoutes.js";
+import cookieParser from "cookie-parser";
 
-// Ganti semua import
-const express = require("express");
-const mongoose = require("mongoose");
-const cors = require("cors");
-const dotenv = require("dotenv");
-const cookieParser = require("cookie-parser");
-
-// Ganti import routes (Asumsikan file routes Anda juga CommonJS atau dapat di-require)
-const adminRoutes = require("../routes/adminRoutes.js");
-const authRoutes = require("../routes/authRoutes.js");
-const employeeRoutes = require("../routes/employeeRoutes.js");
-const attendanceRoutes = require("../routes/attendanceRoutes.js");
-
-// Pastikan dotenv.config() dipanggil
 dotenv.config();
 
 const app = express();
 
-// --- KONEKSI MONGODB --- (Biarkan seperti ini)
-mongoose
-  .connect(process.env.MONGO_URI)
-  .then(() => {
-    console.log("MongoDB Connected Successfully");
-  })
-  .catch((err) => {
-    console.error("MongoDB Connection Error:", err);
-  });
-
-
-// --- MIDDLEWARE CORS PALING ATAS ---
+// Middleware CORS
 app.use(cors({
-  origin: [    
-    'https://absensi-pekerja-fe.vercel.app',
-    'https://absensi-pekerja-3ky9t1z98-afzaals-projects-c2614662.vercel.app',
-    'http://localhost:5000'
-  ],  
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
-  credentials: true
+  // Izinkan origin spesifik dari frontend Vite Anda
+  origin: ['http://localhost:5173','https://absensi-pekerja-fe.vercel.app'],
+  credentials: true // Penting jika Anda menggunakan cookie/session
 }));
 
-// --- MIDDLEWARE LAINNYA ---
 app.use(express.json());
-app.use(cookieParser());
+app.use(cookieParser()); // Tambahkan middleware untuk parsing cookie
 
-// --- ROUTES ---
+// Koneksi MongoDB
+mongoose
+  .connect(process.env.MONGO_URI)
+  .then(() => {
+    console.log("MongoDB Connected Successfully");
+  })
+  .catch((err) => {
+    console.error("MongoDB Connection Error:", err);
+  });
+
+// Routes
 app.use("/api/admin", adminRoutes);
 app.use("/api/auth", authRoutes);
-app.use("/api/employee",employeeRoutes);
+app.use("/api/employee",employeeRoutes)
 app.use("/api/attendance", attendanceRoutes);
 
 
-// --- KRITIKAL: EKSPOR COMMONJS UNTUK VERCEL ---
-module.exports = app;
+
+// Jalankan server
+const PORT = process.env.PORT || 5000;
+app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
+  

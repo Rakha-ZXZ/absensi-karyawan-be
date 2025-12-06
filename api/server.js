@@ -30,15 +30,15 @@ mongoose
 
 
 // --- MIDDLEWARE CORS PALING ATAS ---
-const allowedOrigins = [
-  'http://localhost:5173',
-  'https://absensi-pekerja-fe.vercel.app',
-  // Tambahkan URL Vercel Preview/Development Anda yang spesifik jika ada
-];
-
 app.use(cors({
-  origin: allowedOrigins,
-  credentials: true 
+  origin: [    
+    'https://absensi-pekerja-fe.vercel.app',
+    'https://absensi-pekerja-3ky9t1z98-afzaals-projects-c2614662.vercel.app',
+    'http://localhost:5000'
+  ],  
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: true
 }));
 
 // --- MIDDLEWARE LAINNYA ---

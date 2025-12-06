@@ -7,19 +7,24 @@ const generateToken = (res, userId, userRole) => {
     {expiresIn: "1d",}
 );
 
+const isProduction = process.env.NODE_ENV !== "development";
+
   // 1. Tambahkan logging untuk melihat detail cookie di log Vercel
   const cookieOptions = {
     httpOnly: true,
-    secure: process.env.NODE_ENV !== "development", // true di production
-    sameSite: "none", // Mencegah serangan CSRF
+    secure: isProduction,
+    sameSite: isProduction ? "none" : "lax", 
     expires: new Date(Date.now() + 24 * 60 * 60 * 1000) // Log juga waktu kedaluwarsa
   };
   
   console.log(`[AUTH-LOG] Token JWT dibuat untuk User ID: ${userId}, Role: ${userRole}`);
   console.log(`[AUTH-LOG] Cookie 'jwt' diatur. Secure: ${cookieOptions.secure}, SameSite: ${cookieOptions.sameSite}`);
   
+
   // Simpan token di HTTP-Only cookie
   res.cookie("jwt", token, cookieOptions);
+
+
   
   return token; // Kembalikan token agar bisa disertakan di respons
 };

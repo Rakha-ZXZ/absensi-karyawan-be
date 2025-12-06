@@ -12,11 +12,14 @@ dotenv.config();
 
 const app = express();
 
-// Middleware CORS
 app.use(cors({
-  // Izinkan origin spesifik dari frontend Vite Anda
-  origin: ['http://localhost:5173','https://absensi-pekerja-fe.vercel.app'],
-  credentials: true // Penting jika Anda menggunakan cookie/session
+  origin: [    
+    'https://absensi-pekerja-fe.vercel.app',    
+    'http://localhost:5000'
+  ],  
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: true
 }));
 
 app.use(express.json());
@@ -32,15 +35,15 @@ mongoose
     console.error("MongoDB Connection Error:", err);
   });
 
+  app.get("/", (req, res) => {
+  res.send("Backend is Running ✅");
+});
+
 // Routes
 app.use("/api/admin", adminRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/employee",employeeRoutes)
 app.use("/api/attendance", attendanceRoutes);
 
-
-
-// Jalankan server
-const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
+module.exports = app;
   

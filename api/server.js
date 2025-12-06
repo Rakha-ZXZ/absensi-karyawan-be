@@ -15,7 +15,7 @@ const app = express();
 // Middleware CORS
 app.use(cors({
   // Izinkan origin spesifik dari frontend Vite Anda
-  origin: ['http://localhost:5173','https://absensi-pekerja-fe.vercel.app/login'],
+  origin: ['http://localhost:5173','https://absensi-pekerja-fe.vercel.app'],
   credentials: true // Penting jika Anda menggunakan cookie/session
 }));
 

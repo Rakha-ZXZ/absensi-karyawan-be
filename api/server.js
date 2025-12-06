@@ -1,22 +1,24 @@
-import express from "express";
-import mongoose from "mongoose";
-import cors from "cors";
-import dotenv from "dotenv";
-import adminRoutes from "../routes/adminRoutes.js";
-import authRoutes from "../routes/authRoutes.js";
-import employeeRoutes from "../routes/employeeRoutes.js";
-import attendanceRoutes from "../routes/attendanceRoutes.js";
-import cookieParser from "cookie-parser";
+// File: api/server.js (Gunakan CommonJS)
+
+// Ganti semua import
+const express = require("express");
+const mongoose = require("mongoose");
+const cors = require("cors");
+const dotenv = require("dotenv");
+const cookieParser = require("cookie-parser");
+
+// Ganti import routes (Asumsikan file routes Anda juga CommonJS atau dapat di-require)
+const adminRoutes = require("../routes/adminRoutes.js");
+const authRoutes = require("../routes/authRoutes.js");
+const employeeRoutes = require("../routes/employeeRoutes.js");
+const attendanceRoutes = require("../routes/attendanceRoutes.js");
 
 // Pastikan dotenv.config() dipanggil
 dotenv.config();
 
 const app = express();
 
-// --- 1. KONEKSI MONGODB DILAKUKAN HANYA SEKALI ---
-// Koneksi MongoDB harus dilakukan di luar handler Express jika memungkinkan,
-// atau dilakukan secara lazy. Untuk Vercel, kita biarkan saja di sini 
-// asalkan koneksi ditangani dengan baik (re-use connection).
+// --- KONEKSI MONGODB --- (Biarkan seperti ini)
 mongoose
   .connect(process.env.MONGO_URI)
   .then(() => {
@@ -27,36 +29,28 @@ mongoose
   });
 
 
-// --- 2. MIDDLEWARE CORS DITARUH PALING ATAS ---
-// Pastikan ini ditaruh sebelum middleware lainnya
+// --- MIDDLEWARE CORS PALING ATAS ---
 const allowedOrigins = [
-  'http://localhost:5173',
-  'https://absensi-pekerja-fe.vercel.app',
-  // Tambahkan URL Vercel Preview/Development Anda juga jika ada (tanpa trailing slash)
-  // Contoh: 'https://absensi-pekerja-fe-git-main-afzaals-projects-c2614662.vercel.app' 
+  'http://localhost:5173',
+  'https://absensi-pekerja-fe.vercel.app',
+  // Tambahkan URL Vercel Preview/Development Anda yang spesifik jika ada
 ];
 
 app.use(cors({
   origin: allowedOrigins,
-  credentials: true // Penting jika Anda menggunakan cookie/session
+  credentials: true 
 }));
 
-// --- 3. MIDDLEWARE LAINNYA ---
+// --- MIDDLEWARE LAINNYA ---
 app.use(express.json());
 app.use(cookieParser());
 
-// --- 4. ROUTES ---
+// --- ROUTES ---
 app.use("/api/admin", adminRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/employee",employeeRoutes);
 app.use("/api/attendance", attendanceRoutes);
 
-// --- 5. HAPUS app.listen & EKSPOR APLIKASI UNTUK VERCEL ---
 
-// JIKA MENGGUNAKAN ES MODULES (import/export), gunakan:
-export default app;
-
-// JIKA MENGGUNAKAN COMMONJS (require/module.exports), gunakan:
-// module.exports = app;
-
-// JANGAN gunakan app.listen() di file ini, karena Vercel yang akan menjalankan serverless function.
+// --- KRITIKAL: EKSPOR COMMONJS UNTUK VERCEL ---
+module.exports = app;

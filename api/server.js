@@ -1,17 +1,21 @@
-const express = require('express');;
-const mongoose = require("mongoose");
-const cors = require("cors");
-const cookieParser = require("cookie-parser");
+import express from "express";
+import mongoose from "mongoose";
+import cors from "cors";
+import dotenv from "dotenv";
+import adminRoutes from "../routes/adminRoutes.js";
+import authRoutes from "../routes/authRoutes.js";
+import employeeRoutes from "../routes/employeeRoutes.js"
+import attendanceRoutes from "../routes/attendanceRoutes.js";
+import cookieParser from "cookie-parser";
 
-require('dotenv').config();
+dotenv.config();
 
 const app = express();
 
 app.use(cors({
   origin: [    
     'https://absensi-pekerja-fe.vercel.app',    
-    'http://localhost:5000',    
-    'http://localhost:5173'
+    'http://localhost:5000'
   ],  
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
   allowedHeaders: ['Content-Type', 'Authorization'],
@@ -35,14 +39,14 @@ mongoose
   res.send("Backend is Running ✅");
 });
 
-console.log('CWD:', process.cwd()); // Current Working Directory
-console.log('Trying to load route from:', require.resolve('../routes/authRoutes')); 
-// Jika ini gagal, itu menunjukkan masalah jalur.
-// Routes
-app.use("/api/admin", require("../routes/adminRoutes"));
-app.use("/api/auth", require("../routes/authRoutes"));
-app.use("/api/employee",require("../routes/employeeRoutes"))
-app.use("/api/attendance", require("../routes/attendanceRoutes"));
+// ... (Middleware dan Koneksi MongoDB) ...
 
-module.exports = app;
+// Routes
+app.use("/api/admin", adminRoutes); // Tidak perlu require
+app.use("/api/auth", authRoutes);
+app.use("/api/employee", employeeRoutes);
+app.use("/api/attendance", attendanceRoutes);
+
+// Ganti module.exports
+export default app;
   

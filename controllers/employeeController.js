@@ -218,30 +218,22 @@ export const deleteEmployee = asyncHandler(async (req, res) => {
   res.status(200).json({ message: 'Data karyawan berhasil dihapus.' });
 });
 
-export const loginEmployee = async (req, res) => {
+export const loginEmployee = asyncHandler(async (req, res, next) => {
   const { email, password } = req.body;
   
   if (!email || !password) {
-    return res.status(400).json({ message: "Harap isi email dan password" });
+    res.status(400);
+    throw new Error("Harap isi email dan password");
   }
 
-  try {
-    const employee = await Employee.findOne({ email });
+  const employee = await Employee.findOne({ email });
 
-    if (employee && (await employee.comparePassword(password))) {
-      generateToken(res, employee._id, employee.role);
-
-      res.status(200).json({
-        _id: employee._id,
-        nama: employee.nama,
-        email: employee.email,
-      });
-    } else {      
-      res.status(401).json({ message: "Email atau password salah" });
-    }
-  } 
-  catch (error) {
-    console.error("LOGIN ERROR:", error);
-    res.status(500).json({ message: "Terjadi kesalahan pada server", error: error.message });
+  if (employee && (await employee.comparePassword(password))) {
+    // Lampirkan data employee ke request untuk digunakan middleware selanjutnya
+    req.user = employee; 
+    next(); // Lanjutkan ke middleware pembuatan token
+  } else {      
+    res.status(401);
+    throw new Error("Email atau password salah");
   }
-};
+});

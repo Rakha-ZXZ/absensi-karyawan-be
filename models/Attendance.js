@@ -26,7 +26,7 @@ const attendanceSchema = new mongoose.Schema(
     // Status kehadiran pada hari itu
     status: {
       type: String,
-      enum: ["Hadir", "Terlambat", "Sakit", "Izin", "Alpha", "Cuti"],
+      enum: ["Hadir", "Terlambat", "Cuti"],
       required: [true, "Status kehadiran wajib diisi"],
     },
     // Catatan tambahan, misalnya alasan izin atau sakit

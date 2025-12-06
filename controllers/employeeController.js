@@ -32,6 +32,55 @@ export const getEmployeeProfile = async (req, res) => {
 };
 
 /**
+ * @desc    Mengubah password karyawan
+ * @route   PUT /api/karyawan/change-password
+ * @access  Private (Employee)
+ */
+export const changePasswordEmployee = async (req, res) => {
+  try {
+    // 1. Pastikan role adalah 'employee'
+    if (req.user.role !== 'employee') {
+      return res.status(403).json({ message: "Akses ditolak. Hanya untuk karyawan." });
+    }
+
+    const employeeId = req.user.id;
+    const { currentPassword, newPassword } = req.body;
+
+    // 2. Validasi input
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({ message: "Kata sandi saat ini dan kata sandi baru wajib diisi." });
+    }
+
+    if (newPassword.length < 6) {
+      return res.status(400).json({ message: "Kata sandi baru minimal harus 6 karakter." });
+    }
+
+    // 3. Cari karyawan berdasarkan ID
+    const employee = await Employee.findById(employeeId);
+
+    if (!employee) {
+      return res.status(404).json({ message: "Karyawan tidak ditemukan." });
+    }
+
+    // 4. Verifikasi kata sandi saat ini
+    const isMatch = await employee.comparePassword(currentPassword);
+
+    if (!isMatch) {
+      return res.status(401).json({ message: "Kata sandi saat ini salah." });
+    }
+
+    // 5. Update kata sandi baru (akan di-hash oleh middleware pre-save di model Employee)
+    employee.password = newPassword;
+    await employee.save();
+
+    res.status(200).json({ message: "Kata sandi berhasil diubah." });
+  } catch (error) {
+    res.status(500).json({ message: "Terjadi kesalahan pada server", error: error.message });
+  }
+};
+
+
+/**
  * @desc    Get all employees
  * @route   GET /api/karyawan
  * @access  Private (Admin)

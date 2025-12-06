@@ -1,5 +1,6 @@
 import asyncHandler from "express-async-handler";
 import Attendance from "../models/Attendance.js";
+import mongoose from "mongoose";
 import { getDistanceInMeters } from "../utils/locationHelper.js";
 
 /**
@@ -209,4 +210,88 @@ export const getMyAttendanceHistory = asyncHandler(async (req, res) => {
   const history = await Attendance.find({ employeeId }).sort({ tanggal: -1 });
 
   res.status(200).json(history);
+});
+
+/**
+ * @desc    Mengambil jumlah hari kerja yang dibayar (Hadir, Terlambat, Cuti) di bulan berjalan
+ * @route   GET /api/attendance/payable-days-count
+ * @access  Private (Employee)
+ */
+export const getPayableDaysCount = asyncHandler(async (req, res) => {
+  // 1. Pastikan yang mengakses adalah employee
+  if (req.user.role !== "employee") {
+    res.status(403);
+    throw new Error("Akses ditolak. Hanya untuk karyawan.");
+  }
+
+  const employeeId = req.user.id;
+
+  // 2. Tentukan rentang waktu untuk bulan ini
+  const now = new Date();
+  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+  startOfMonth.setHours(0, 0, 0, 0);
+
+  const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+  endOfMonth.setHours(23, 59, 59, 999);
+
+  // 3. Definisikan status yang dihitung sebagai hari kerja yang dibayar
+  const payableStatuses = ["Hadir", "Terlambat", "Cuti"];
+
+  // 4. Hitung dokumen yang cocok menggunakan countDocuments untuk efisiensi
+  const payableDaysCount = await Attendance.countDocuments({
+    employeeId,
+    tanggal: { $gte: startOfMonth, $lte: endOfMonth },
+    status: { $in: payableStatuses },
+  });
+
+  // 5. Kirim hasilnya
+  res.status(200).json({ payableDaysCount });
+});
+
+/**
+ * @desc    Mengambil total jumlah absensi (semua status) di bulan berjalan
+ * @route   GET /api/attendance/monthly-recap
+ * @access  Private (Employee)
+ */
+export const getMonthlyStatusRecap = asyncHandler(async (req, res) => {
+  // 1. Pastikan yang mengakses adalah employee
+  if (req.user.role !== "employee") {
+    res.status(403);
+    throw new Error("Akses ditolak. Hanya untuk karyawan.");
+  }
+
+  const employeeId = req.user.id;
+
+  // 2. Tentukan rentang waktu untuk bulan ini
+  const now = new Date();
+  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+  startOfMonth.setHours(0, 0, 0, 0);
+
+  const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+  endOfMonth.setHours(23, 59, 59, 999);
+
+  // 3. Gunakan Aggregation Pipeline untuk menghitung jumlah per status
+  const statusCounts = await Attendance.aggregate([
+    {
+      $match: {
+        employeeId: new mongoose.Types.ObjectId(employeeId),
+        tanggal: { $gte: startOfMonth, $lte: endOfMonth },
+      },
+    },
+    {
+      $group: {
+        _id: "$status", // Kelompokkan berdasarkan kolom 'status'
+        count: { $sum: 1 }, // Hitung jumlah dokumen di setiap kelompok
+      },
+    },
+  ]);
+
+  // 4. Format hasil agar mudah digunakan di frontend
+  const result = {};
+  statusCounts.forEach((item) => {
+    result[item._id] = item.count;
+  });
+
+  // 5. Kirim hasilnya
+  res.status(200).json(result);
 });

@@ -14,7 +14,7 @@ const app = express();
 
 app.use(cors({
   origin: 
-    '*',          
+    'https://absensi-pekerja-fe.vercel.app',          
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
   allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: true

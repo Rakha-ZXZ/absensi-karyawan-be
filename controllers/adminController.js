@@ -50,6 +50,53 @@ export const registerAdmin = async (req, res) => {
 };
 
 /**
+ * @desc    Mengubah password admin
+ * @route   PUT /api/admin/change-password
+ * @access  Private (Admin)
+ */
+export const changePasswordAdmin = async (req, res) => {
+  try {
+    // 1. Pastikan role adalah 'admin'
+    if (req.user.role !== 'admin') {
+      return res.status(403).json({ message: "Akses ditolak. Hanya untuk admin." });
+    }
+
+    const adminId = req.user.id;
+    const { currentPassword, newPassword } = req.body;
+
+    // 2. Validasi input
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({ message: "Kata sandi saat ini dan kata sandi baru wajib diisi." });
+    }
+
+    if (newPassword.length < 6) {
+      return res.status(400).json({ message: "Kata sandi baru minimal harus 6 karakter." });
+    }
+
+    // 3. Cari admin berdasarkan ID
+    const admin = await Admin.findById(adminId);
+
+    if (!admin) {
+      return res.status(404).json({ message: "Admin tidak ditemukan." });
+    }
+
+    // 4. Verifikasi kata sandi saat ini
+    const isMatch = await admin.comparePassword(currentPassword);
+
+    if (!isMatch) {
+      return res.status(401).json({ message: "Kata sandi saat ini salah." });
+    }
+
+    // 5. Update kata sandi baru (akan di-hash oleh middleware pre-save di model Admin)
+    admin.password = newPassword;
+    await admin.save();
+
+    res.status(200).json({ message: "Kata sandi berhasil diubah." });
+  } catch (error) {
+    res.status(500).json({ message: "Terjadi kesalahan pada server", error: error.message });
+  }
+};
+/**
  * @desc    Auth admin & get token (Login)
  * @route   POST /api/admins/login
  * @access  Public
@@ -101,8 +148,8 @@ export const getAdminProfile = async (req, res) => {
     // Ambil ID dari req.user yang sudah dilampirkan oleh middleware verifyToken
     const adminId = req.user.id;
 
-    // Cari admin di database berdasarkan ID tersebut, tanpa menyertakan password
-    const admin = await Admin.findById(adminId).select('-password');
+    // Cari admin di database berdasarkan ID dan hanya ambil field 'nama' dan 'role'
+    const admin = await Admin.findById(adminId).select('nama role');
 
     if (admin) {
       res.status(200).json(admin);
@@ -113,5 +160,3 @@ export const getAdminProfile = async (req, res) => {
     res.status(500).json({ message: "Terjadi kesalahan pada server", error: error.message });
   }
 };
-
-

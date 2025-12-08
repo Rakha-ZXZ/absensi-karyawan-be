@@ -295,3 +295,258 @@ export const getMonthlyStatusRecap = asyncHandler(async (req, res) => {
   // 5. Kirim hasilnya
   res.status(200).json(result);
 });
+
+/**
+ * @desc    Mengambil semua data absensi untuk semua karyawan (Admin only)
+ * @route   GET /api/admin/all-attendance
+ * @access  Private (Admin)
+ */
+export const getAllAttendanceData = asyncHandler(async (req, res) => {
+  // 1. Pastikan yang mengakses adalah admin
+  if (req.user.role !== "admin") {
+    res.status(403);
+    throw new Error("Akses ditolak. Hanya untuk admin.");
+  }
+
+  // 2. Ambil semua data absensi, gabungkan dengan data nama karyawan, dan urutkan
+  const allAttendance = await Attendance.find({})
+    .populate("employeeId", "nama email employeeId") // Mengambil 'nama', 'email', dan 'employeeId' dari model Employee
+    .sort({ tanggal: -1 }); // Urutkan dari yang terbaru
+
+  res.status(200).json(allAttendance);
+});
+
+/**
+ * @desc    Mengambil data absensi berdasarkan bulan dan tahun (Admin only)
+ * @route   GET /api/admin/attendance-by-month?month=M&year=YYYY
+ * @access  Private (Admin)
+ */
+export const getAttendanceByMonth = asyncHandler(async (req, res) => {
+  // 1. Pastikan yang mengakses adalah admin
+  if (req.user.role !== "admin") {
+    res.status(403);
+    throw new Error("Akses ditolak. Hanya untuk admin.");
+  }
+
+  const { month, year } = req.query;
+
+  // 2. Validasi input query
+  if (!month || !year) {
+    res.status(400);
+    throw new Error("Parameter 'month' dan 'year' wajib diisi.");
+  }
+
+  const monthInt = parseInt(month, 10);
+  const yearInt = parseInt(year, 10);
+
+  // 3. Buat rentang tanggal untuk query database
+  // Bulan di JavaScript Date adalah 0-11, jadi kita kurangi 1
+  const startDate = new Date(yearInt, monthInt - 1, 1);
+  startDate.setHours(0, 0, 0, 0);
+
+  const endDate = new Date(yearInt, monthInt, 1);
+  endDate.setHours(0, 0, 0, 0);
+
+  // 4. Ambil data absensi dalam rentang tanggal yang ditentukan
+  const attendanceInMonth = await Attendance.find({
+    tanggal: {
+      $gte: startDate,
+      $lt: endDate,
+    },
+  })
+    .populate("employeeId", "nama email employeeId jabatan") // Ambil juga jabatan
+    .sort({ tanggal: -1 });
+
+  res.status(200).json(attendanceInMonth);
+});
+
+/**
+ * @desc    Memperbarui data absensi (Admin only)
+ * @route   PUT /api/attendance/:id
+ * @access  Private (Admin)
+ */
+export const updateAttendance = asyncHandler(async (req, res) => {
+  // 1. Pastikan yang mengakses adalah admin
+  if (req.user.role !== "admin") {
+    res.status(403);
+    throw new Error("Akses ditolak. Hanya untuk admin.");
+  }
+
+  const { id } = req.params;
+  const { tanggal, jamMasuk, jamPulang, status } = req.body;
+
+  // 2. Validasi ID
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    res.status(400);
+    throw new Error('ID absensi tidak valid.');
+  }
+
+  // 3. Buat objek yang berisi field yang akan diupdate
+  const updateData = {};
+  if (tanggal) updateData.tanggal = tanggal;
+  if (jamMasuk) updateData.jamMasuk = jamMasuk;
+  // Memungkinkan untuk mengosongkan jam pulang dengan mengirim null atau string kosong
+  if (jamPulang || jamPulang === null || jamPulang === '') {
+    updateData.jamPulang = jamPulang || null;
+  }
+  if (status) updateData.status = status;
+
+  // 4. Cari dan perbarui data dalam satu operasi atomik
+  // Opsi { new: true } memastikan dokumen yang dikembalikan adalah versi setelah di-update
+  const updatedAttendance = await Attendance.findByIdAndUpdate(
+    id,
+    updateData,
+    { new: true, runValidators: true }
+  ).populate("employeeId", "nama email employeeId"); // Langsung populate di sini
+
+  // 5. Cek apakah dokumen ditemukan dan berhasil diupdate
+  if (!updatedAttendance) {
+    res.status(404);
+    throw new Error("Data absensi tidak ditemukan.");
+  }
+
+  // 6. Kirim respons dengan data yang sudah di-populate
+  res.status(200).json({ message: 'Data absensi berhasil diperbarui.', data: updatedAttendance });
+});
+
+/**
+ * @desc    Menghapus data absensi (Admin only)
+ * @route   DELETE /api/attendance/:id
+ * @access  Private (Admin)
+ */
+export const deleteAttendance = asyncHandler(async (req, res) => {
+  // 1. Pastikan yang mengakses adalah admin
+  if (req.user.role !== "admin") {
+    res.status(403);
+    throw new Error("Akses ditolak. Hanya untuk admin.");
+  }
+
+  const { id } = req.params;
+
+  // 2. Validasi ID
+  if (!mongoose.Types.ObjectId.isValid(id)) {
+    res.status(400);
+    throw new Error('ID absensi tidak valid.');
+  }
+
+  // 3. Cari dan hapus data absensi menggunakan findByIdAndDelete
+  const attendance = await Attendance.findByIdAndDelete(id);
+
+  // 4. Jika data tidak ditemukan, kirim error 404
+  if (!attendance) {
+    res.status(404);
+    throw new Error("Data absensi tidak ditemukan.");
+  }
+
+  // 5. Kirim respons sukses
+  res.status(200).json({ message: 'Data absensi berhasil dihapus.' });
+});
+
+/**
+ * @desc    Mengambil semua aktivitas absensi hari ini (Admin only)
+ * @route   GET /api/attendance/today-activity
+ * @access  Private (Admin)
+ */
+export const getTodaysAttendanceActivity = asyncHandler(async (req, res) => {
+  // 1. Pastikan yang mengakses adalah admin
+  if (req.user.role !== "admin") {
+    res.status(403);
+    throw new Error("Akses ditolak. Hanya untuk admin.");
+  }
+
+  // 2. Tentukan rentang waktu untuk hari ini
+  const startOfDay = new Date();
+  startOfDay.setHours(0, 0, 0, 0);
+
+  const endOfDay = new Date();
+  endOfDay.setHours(23, 59, 59, 999);
+
+  // 3. Ambil semua data absensi hari ini, gabungkan dengan data nama karyawan, dan urutkan
+  const todaysAttendance = await Attendance.find({
+    tanggal: {
+      $gte: startOfDay,
+      $lt: endOfDay,
+    },
+  })
+    .populate("employeeId", "nama employeeId") // Mengambil 'nama' dan 'employeeId' dari model Employee
+    .sort({ createdAt: -1 }); // Urutkan berdasarkan waktu dibuat (check-in terbaru di atas)
+
+  res.status(200).json(todaysAttendance);
+});
+
+/**
+ * @desc    Menghitung jumlah karyawan yang sudah absen hari ini (Admin only)
+ * @route   GET /api/attendance/today-count
+ * @access  Private (Admin)
+ */
+export const getTodaysAttendanceCount = asyncHandler(async (req, res) => {
+  // 1. Pastikan yang mengakses adalah admin
+  if (req.user.role !== "admin") {
+    res.status(403);
+    throw new Error("Akses ditolak. Hanya untuk admin.");
+  }
+
+  // 2. Tentukan rentang waktu untuk hari ini
+  const startOfDay = new Date();
+  startOfDay.setHours(0, 0, 0, 0);
+
+  const endOfDay = new Date();
+  endOfDay.setHours(23, 59, 59, 999);
+
+  // 3. Hitung jumlah dokumen absensi hari ini menggunakan countDocuments untuk efisiensi
+  const count = await Attendance.countDocuments({
+    tanggal: {
+      $gte: startOfDay,
+      $lte: endOfDay,
+    },
+  });
+
+  // 4. Kirim respons dengan jumlahnya
+  res.status(200).json({ count });
+});
+
+/**
+ * @desc    Mengambil rekapitulasi jumlah status absensi (Hadir, Terlambat, Cuti) bulan ini untuk semua karyawan (Admin only)
+ * @route   GET /api/attendance/monthly-summary
+ * @access  Private (Admin)
+ */
+export const getMonthlySummary = asyncHandler(async (req, res) => {
+  // 1. Pastikan yang mengakses adalah admin
+  if (req.user.role !== "admin") {
+    res.status(403);
+    throw new Error("Akses ditolak. Hanya untuk admin.");
+  }
+
+  // 2. Tentukan rentang waktu untuk bulan ini
+  const now = new Date();
+  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+  startOfMonth.setHours(0, 0, 0, 0);
+
+  const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+  endOfMonth.setHours(23, 59, 59, 999);
+
+  // 3. Gunakan Aggregation Pipeline untuk menghitung jumlah per status
+  const statusCounts = await Attendance.aggregate([
+    {
+      $match: {
+        tanggal: { $gte: startOfMonth, $lte: endOfMonth },
+        status: { $in: ["Hadir", "Terlambat", "Cuti"] },
+      },
+    },
+    {
+      $group: {
+        _id: "$status", // Kelompokkan berdasarkan kolom 'status'
+        count: { $sum: 1 }, // Hitung jumlah dokumen di setiap kelompok
+      },
+    },
+  ]);
+
+  // 4. Format hasil agar mudah digunakan di frontend, termasuk default 0
+  const result = { Hadir: 0, Terlambat: 0, Cuti: 0 };
+  statusCounts.forEach((item) => {
+    result[item._id] = item.count;
+  });
+
+  // 5. Kirim hasilnya
+  res.status(200).json(result);
+});

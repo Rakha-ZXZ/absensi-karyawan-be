@@ -1,9 +1,27 @@
 import mongoose from "mongoose";
 import bcrypt from "bcrypt";
 
+const JABATAN_ENUM = [
+  "Software Developer",
+  "Project Manager",
+  "UI/UX Designer",
+  "QA Engineer",
+  "HR Staff",
+  "Marketing Specialist",
+];
+
+const DEPARTEMEN_ENUM = [
+  "Teknologi Informasi",
+  "Human Resources",
+  "Marketing",
+  "Finance",
+  "Operations",
+];
+
+
 const EmployeeSchema = new mongoose.Schema(
   {
-    employerId: {
+    employeeId: {
       type: String,
       unique: true,
     },
@@ -13,24 +31,12 @@ const EmployeeSchema = new mongoose.Schema(
     },
     jabatan: {
       type: String,
-      enum: [
-        "Software Developer",
-        "Project Manager",
-        "UI/UX Designer",
-        "QA Engineer",
-        "HR Staff",
-        "Marketing Specialist",
-      ],
+      // Tambahkan " " agar bisa divalidasi, nilai akan diatur di pre-validate hook
+      enum: [...JABATAN_ENUM, " "],
     },
     departemen: {
       type: String,
-      enum: [
-        "Teknologi Informasi",
-        "Human Resources",
-        "Marketing",
-        "Finance",
-        "Operations",
-      ],
+      enum: [...DEPARTEMEN_ENUM, " "],
     },
     nomorTelepon: {
       type: String,
@@ -51,13 +57,35 @@ const EmployeeSchema = new mongoose.Schema(
       required: [true, "Password wajib diisi"],
       minlength: [6, "Password minimal 6 karakter"],
     },
+    // Field untuk penggajian
+    gajiPokok: {
+      type: Number,
+      required: [true, "Gaji pokok wajib diisi"],
+      default: 0,
+      min: [0, "Gaji pokok tidak boleh negatif"],
+    },
+    tunjanganJabatan: {
+      type: Number,
+      default: 0,
+      min: [0, "Tunjangan tidak boleh negatif"],
+    },
+    tunjanganTransport: {
+      type: Number,
+      default: 0,
+      min: [0, "Tunjangan tidak boleh negatif"],
+    },
+    tunjanganMakan: {
+      type: Number,
+      default: 0,
+      min: [0, "Tunjangan tidak boleh negatif"],
+    },
     tanggalMasuk: {
       type: Date,
       default: Date.now,
     },
     status: {
       type: String,
-      enum: ["Aktif", "Tidak Aktif", "Cuti"],
+      enum: ["Aktif", "Cuti"],
       default: "Aktif",
     },
     role: {
@@ -67,6 +95,18 @@ const EmployeeSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
+
+// Middleware untuk memeriksa nilai enum sebelum validasi
+EmployeeSchema.pre("validate", function() {
+  // Jika jabatan didefinisikan (termasuk string kosong) dan tidak ada dalam ENUM, set ke " "
+  if (this.jabatan !== undefined && !JABATAN_ENUM.includes(this.jabatan)) {
+    this.jabatan = " ";
+  }
+  // Jika departemen didefinisikan (termasuk string kosong) dan tidak ada dalam ENUM, set ke " "
+  if (this.departemen !== undefined && !DEPARTEMEN_ENUM.includes(this.departemen)) {
+    this.departemen = " ";
+  } 
+});
 
 // Middleware untuk hash password sebelum menyimpan
 EmployeeSchema.pre("save", async function () { // Hapus 'next' dari parameter
@@ -80,12 +120,12 @@ EmployeeSchema.pre("save", async function () { // Hapus 'next' dari parameter
       const randomNum = Math.floor(100000 + Math.random() * 900000);
       generatedId = `EMP-${randomNum}`;
       // Cek apakah ID sudah ada di database
-      const existingEmployee = await this.constructor.findOne({ employerId: generatedId });
+      const existingEmployee = await this.constructor.findOne({ employeeId: generatedId });
       if (!existingEmployee) {
         isUnique = true;
       }
     }
-    this.employerId = generatedId;
+    this.employeeId = generatedId;
   }
 
   // Hash password jika field password dimodifikasi (atau baru)

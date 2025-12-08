@@ -1,6 +1,7 @@
 import Employee from "../models/Employee.js";
 import asyncHandler from 'express-async-handler';
 import mongoose from 'mongoose';
+import Attendance from "../models/Attendance.js";
 
 /**
  * @desc    Get employee profile
@@ -111,13 +112,18 @@ export const createEmployee = asyncHandler(async (req, res) => {
     departemen,
     nomorTelepon,
     alamat,
-    status
+    status,
+    // Tambahkan field penggajian
+    gajiPokok,
+    tunjanganJabatan,
+    tunjanganTransport,
+    tunjanganMakan,
   } = req.body;
 
   // Validasi field wajib
-  if (!nama || !password) {
+  if (!nama || !password || gajiPokok === undefined) {
     res.status(400);
-    throw new Error("Nama dan password wajib diisi.");
+    throw new Error("Nama, password, dan gaji pokok wajib diisi.");
   }
 
   // Cek jika email sudah ada (jika email diisi)
@@ -128,9 +134,22 @@ export const createEmployee = asyncHandler(async (req, res) => {
       throw new Error("Karyawan dengan email tersebut sudah terdaftar.");
     }
   }
-
-  // Buat karyawan baru (employerId dan password hash ditangani oleh model)
-  const employee = await Employee.create(req.body);
+    
+  // Buat karyawan dengan data yang sudah divalidasi
+  const employee = await Employee.create({
+    nama,
+    email,
+    password,
+    jabatan,
+    departemen,
+    nomorTelepon,
+    alamat,
+    status,
+    gajiPokok,
+    tunjanganJabatan,
+    tunjanganTransport,
+    tunjanganMakan,
+  });
 
   res.status(201).json({ message: "Karyawan berhasil ditambahkan", data: employee });
 });
@@ -205,16 +224,38 @@ export const deleteEmployee = asyncHandler(async (req, res) => {
     throw new Error('ID karyawan tidak valid.');
   }
 
-  // Cari dan hapus karyawan berdasarkan ID
-  const employee = await Employee.findByIdAndDelete(id);
-
-  // Jika tidak ada karyawan yang ditemukan dengan ID tersebut
+  // 1. Cek dulu apakah karyawan ada
+  const employee = await Employee.findById(id);
   if (!employee) {
     res.status(404);
     throw new Error('Karyawan tidak ditemukan.');
   }
 
-  res.status(200).json({ message: 'Data karyawan berhasil dihapus.' });
+  // 2. Hapus semua data absensi yang terkait dengan employeeId ini
+  await Attendance.deleteMany({ employeeId: id });
+
+  // 3. Setelah data absensi bersih, hapus data karyawan itu sendiri
+  await Employee.findByIdAndDelete(id);
+
+  res.status(200).json({ message: 'Data karyawan dan semua riwayat absensinya berhasil dihapus.' });
+});
+
+/**
+ * @desc    Mendapatkan jumlah total karyawan
+ * @route   GET /api/karyawan/count
+ * @access  Private (Admin)
+ */
+export const getEmployeeCount = asyncHandler(async (req, res) => {
+  // Pastikan yang mengakses adalah admin
+  if (req.user.role !== 'admin') {
+    res.status(403);
+    throw new Error("Akses ditolak. Hanya admin yang dapat melihat jumlah karyawan.");
+  }
+
+  // Hitung jumlah dokumen di koleksi Employee
+  const count = await Employee.countDocuments({});
+  
+  res.status(200).json({ count });
 });
 
 export const loginEmployee = asyncHandler(async (req, res, next) => {
@@ -235,4 +276,31 @@ export const loginEmployee = asyncHandler(async (req, res, next) => {
     res.status(401);
     throw new Error("Email atau password salah");
   }
+});
+
+/**
+ * @desc    Mengambil detail gaji karyawan yang login
+ * @route   GET /api/karyawan/salary-details
+ * @access  Private (Employee)
+ */
+export const getEmployeeSalaryDetails = asyncHandler(async (req, res) => {
+  // 1. Pastikan role adalah 'employee'
+  if (req.user.role !== 'employee') {
+    res.status(403);
+    throw new Error("Akses ditolak. Hanya untuk karyawan.");
+  }
+
+  const employeeId = req.user.id;
+
+  // 2. Cari karyawan dan pilih hanya field yang berhubungan dengan gaji
+  const salaryDetails = await Employee.findById(employeeId).select(
+    'gajiPokok tunjanganJabatan tunjanganTransport tunjanganMakan'
+  );
+
+  if (!salaryDetails) {
+    res.status(404);
+    throw new Error('Data gaji karyawan tidak ditemukan.');
+  }
+
+  res.status(200).json(salaryDetails);
 });

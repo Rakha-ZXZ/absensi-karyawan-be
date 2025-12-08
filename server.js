@@ -6,6 +6,7 @@ import adminRoutes from "./routes/adminRoutes.js";
 import authRoutes from "./routes/authRoutes.js";
 import employeeRoutes from "./routes/employeeRoutes.js"
 import attendanceRoutes from "./routes/attendanceRoutes.js";
+import payrollRoutes from "./routes/payrollRoutes.js";
 import cookieParser from "cookie-parser";
 
 dotenv.config();
@@ -40,6 +41,7 @@ app.use("/api/admin", adminRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/employee",employeeRoutes)
 app.use("/api/attendance", attendanceRoutes);
+app.use("/api/payroll", payrollRoutes);
 
 
 

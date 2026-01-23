@@ -27,6 +27,23 @@ export const checkIn = asyncHandler(async (req, res) => {
     throw new Error("Data lokasi (latitude dan longitude) wajib diisi.");
   }
 
+  // 2a. Cek apakah karyawan sedang dalam status cuti yang disetujui
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const tomorrow = new Date(today);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+
+  const existingLeaveToday = await Attendance.findOne({
+    employeeId,
+    tanggal: { $gte: today, $lt: tomorrow },
+    status: "Cuti",
+  });
+
+  if (existingLeaveToday) {
+    res.status(403);
+    throw new Error("Anda sedang dalam status cuti yang telah disetujui. Tidak dapat melakukan absensi masuk.");
+  }
+
   // 3. Ambil konfigurasi lokasi kantor dari database Settings
   let settings = await Settings.findOne({ settingsId: "app-settings" });
   
@@ -51,12 +68,6 @@ export const checkIn = asyncHandler(async (req, res) => {
 
 
   // 6. Cek apakah karyawan sudah absen masuk hari ini
-  const today = new Date();
-  today.setHours(0, 0, 0, 0); // Set waktu ke awal hari
-
-  const tomorrow = new Date(today);
-  tomorrow.setDate(tomorrow.getDate() + 1); // Set waktu ke awal hari berikutnya
-
   const existingAttendance = await Attendance.findOne({
     employeeId,
     // Cari record absensi antara awal hari ini dan awal hari besok
@@ -366,12 +377,18 @@ export const recordLeave = asyncHandler(async (req, res) => {
     throw new Error(`Karyawan sudah memiliki catatan absensi (Status: ${existingAttendance.status}) pada tanggal tersebut.`);
   }
 
-  // 5. Buat catatan absensi Cuti
+  // 5. Buat catatan absensi Cuti dengan jam masuk dan jam pulang otomatis
+  const jamMasukCuti = new Date(leaveDate);
+  jamMasukCuti.setHours(8, 0, 0, 0);
+  
+  const jamPulangCuti = new Date(leaveDate);
+  jamPulangCuti.setHours(17, 0, 0, 0);
+  
   await Attendance.create({
     employeeId,
     tanggal: leaveDate,
-    // Atur jam masuk default ke jam 8 pagi pada tanggal cuti
-    jamMasuk: new Date(new Date(leaveDate).setHours(8, 0, 0, 0)),
+    jamMasuk: jamMasukCuti,
+    jamPulang: jamPulangCuti,
     status: "Cuti",
     keterangan: "Cuti dicatat oleh Admin.",
   });
@@ -384,9 +401,10 @@ export const recordLeave = asyncHandler(async (req, res) => {
 });
 
 /**
- * @desc    Mencatat absensi sebagai Cuti oleh Karyawan (untuk hari ini)
+ * @desc    Mencatat absensi sebagai Cuti oleh Karyawan (untuk hari ini) - DEPRECATED
  * @route   POST /api/attendance/request-leave
  * @access  Private (Employee)
+ * @deprecated Gunakan /api/leave-requests untuk mengajukan cuti yang memerlukan persetujuan admin
  */
 export const requestLeave = asyncHandler(async (req, res) => {
   // 1. Pastikan yang mengakses adalah employee

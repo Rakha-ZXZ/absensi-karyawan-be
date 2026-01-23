@@ -166,11 +166,19 @@ export const approveLeaveRequest = asyncHandler(async (req, res) => {
     });
 
     if (!existingAttendance) {
+      // Set jam masuk dan jam pulang otomatis untuk cuti
+      const jamMasukCuti = new Date(cutiDate);
+      jamMasukCuti.setHours(8, 0, 0, 0);
+      
+      const jamPulangCuti = new Date(cutiDate);
+      jamPulangCuti.setHours(17, 0, 0, 0);
+      
       attendancePromises.push(
         Attendance.create({
           employeeId: leaveRequest.employeeId._id,
           tanggal: cutiDate,
-          jamMasuk: new Date(cutiDate.setHours(8, 0, 0, 0)),
+          jamMasuk: jamMasukCuti,
+          jamPulang: jamPulangCuti,
           status: "Cuti",
           keterangan: `Cuti disetujui: ${leaveRequest.alasan}`,
         })
@@ -234,9 +242,9 @@ export const rejectLeaveRequest = asyncHandler(async (req, res) => {
 });
 
 /**
- * @desc    Menghapus pengajuan cuti (Employee - hanya yang pending)
+ * @desc    Menghapus pengajuan cuti (Employee - hanya yang pending, Admin - semua)
  * @route   DELETE /api/leave-requests/:id
- * @access  Private (Employee)
+ * @access  Private (Employee/Admin)
  */
 export const deleteLeaveRequest = asyncHandler(async (req, res) => {
   const { id } = req.params;
@@ -244,7 +252,7 @@ export const deleteLeaveRequest = asyncHandler(async (req, res) => {
   const userRole = req.user.role;
 
   // Cari pengajuan cuti
-  const leaveRequest = await LeaveRequest.findById(id);
+  const leaveRequest = await LeaveRequest.findById(id).populate("employeeId", "nama");
 
   if (!leaveRequest) {
     res.status(404);
@@ -253,7 +261,7 @@ export const deleteLeaveRequest = asyncHandler(async (req, res) => {
 
   // Validasi: Employee hanya bisa hapus pengajuan sendiri yang masih pending
   if (userRole === "employee") {
-    if (leaveRequest.employeeId.toString() !== userId) {
+    if (leaveRequest.employeeId._id.toString() !== userId) {
       res.status(403);
       throw new Error("Anda tidak memiliki akses untuk menghapus pengajuan ini.");
     }
@@ -263,7 +271,41 @@ export const deleteLeaveRequest = asyncHandler(async (req, res) => {
     }
   }
 
+  // Admin bisa hapus semua pengajuan
+  // Jika pengajuan sudah disetujui, hapus juga catatan absensi terkait
+  if (leaveRequest.status === "Disetujui") {
+    const startDate = new Date(leaveRequest.tanggalMulai);
+    const endDate = new Date(leaveRequest.tanggalSelesai);
+
+    // Hapus semua catatan absensi cuti dalam periode tersebut
+    for (let date = new Date(startDate); date <= endDate; date.setDate(date.getDate() + 1)) {
+      const cutiDate = new Date(date);
+      cutiDate.setHours(0, 0, 0, 0);
+
+      await Attendance.deleteMany({
+        employeeId: leaveRequest.employeeId._id,
+        tanggal: {
+          $gte: cutiDate,
+          $lt: new Date(cutiDate.getTime() + 24 * 60 * 60 * 1000),
+        },
+        status: "Cuti",
+      });
+    }
+
+    // Update status karyawan kembali ke Aktif jika sedang cuti
+    const employee = await Employee.findById(leaveRequest.employeeId._id);
+    if (employee && employee.status === "Cuti") {
+      employee.status = "Aktif";
+      await employee.save();
+    }
+  }
+
+  const employeeName = leaveRequest.employeeId.nama;
   await leaveRequest.deleteOne();
 
-  res.status(200).json({ message: "Pengajuan cuti berhasil dihapus." });
+  res.status(200).json({ 
+    message: userRole === "admin" 
+      ? `Pengajuan cuti ${employeeName} berhasil dihapus.${leaveRequest.status === "Disetujui" ? " Catatan absensi terkait juga telah dihapus." : ""}`
+      : "Pengajuan cuti berhasil dihapus." 
+  });
 });

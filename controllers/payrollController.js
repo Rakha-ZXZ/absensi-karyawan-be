@@ -71,8 +71,7 @@ export const generatePayroll = asyncHandler(async (req, res) => {
     const attendanceRecap = {
       totalHariHadir: attendances.filter((a) => a.status === "Hadir").length,
       totalHariTerlambat: attendances.filter((a) => a.status === "Terlambat").length,
-      totalHariCuti: attendances.filter((a) => a.status === "Cuti").length,
-      totalHariSakit: 0, // Placeholder
+      totalHariCuti: attendances.filter((a) => a.status === "Cuti").length,      
       totalHariAlpha: totalHariAlpha, // Hasil perhitungan Alpha
     };
 
@@ -89,8 +88,7 @@ export const generatePayroll = asyncHandler(async (req, res) => {
     const totalHariDibayar = 
       attendanceRecap.totalHariHadir + 
       attendanceRecap.totalHariTerlambat + 
-      attendanceRecap.totalHariCuti +
-      attendanceRecap.totalHariSakit;
+      attendanceRecap.totalHariCuti;     
 
     // c. Hitung gaji bersih berdasarkan prorata kehadiran
     const pendapatanPerHari = pendapatanKotor / HARI_KERJA_ASUMSI;
@@ -275,7 +273,6 @@ export const updatePayrollDetails = asyncHandler(async (req, res) => {
   // 4. Hitung ulang total potongan dan gaji bersih
   payroll.totalPotongan = 
     (payroll.potonganAbsensi || 0) + 
-    (payroll.potonganKeterlambatan || 0) + 
     payroll.potonganLain;
   
   payroll.gajiBersih = payroll.pendapatanKotor - payroll.totalPotongan;

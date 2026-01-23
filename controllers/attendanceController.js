@@ -1,6 +1,8 @@
 import asyncHandler from "express-async-handler";
 import Attendance from "../models/Attendance.js";
 import mongoose from "mongoose";
+import Employee from "../models/Employee.js"; // <-- Tambahkan import Employee
+import Settings from "../models/Settings.js"; // <-- Tambahkan import Settings
 import { getDistanceInMeters } from "../utils/locationHelper.js";
 
 /**
@@ -17,6 +19,7 @@ export const checkIn = asyncHandler(async (req, res) => {
 
   const { latitude, longitude } = req.body;
   const employeeId = req.user.id;
+  const employee = await Employee.findById(employeeId); // <-- Ambil data employee
 
   // 2. Validasi input lokasi dari frontend
   if (!latitude || !longitude) {
@@ -24,10 +27,17 @@ export const checkIn = asyncHandler(async (req, res) => {
     throw new Error("Data lokasi (latitude dan longitude) wajib diisi.");
   }
 
-  // 3. Ambil konfigurasi lokasi kantor dari environment variables
-  const officeLat = parseFloat(process.env.OFFICE_LATITUDE);
-  const officeLon = parseFloat(process.env.OFFICE_LONGITUDE);
-  const maxRadius = parseInt(process.env.MAX_ATTENDANCE_RADIUS, 10);
+  // 3. Ambil konfigurasi lokasi kantor dari database Settings
+  let settings = await Settings.findOne({ settingsId: "app-settings" });
+  
+  // Jika settings belum ada, buat default
+  if (!settings) {
+    settings = await Settings.create({ settingsId: "app-settings" });
+  }
+  
+  const officeLat = settings.officeLatitude;
+  const officeLon = settings.officeLongitude;
+  const maxRadius = settings.maxAttendanceRadius;
 
   // 4. Hitung jarak antara karyawan dan kantor
   const distance = getDistanceInMeters(latitude, longitude, officeLat, officeLon);
@@ -66,6 +76,15 @@ export const checkIn = asyncHandler(async (req, res) => {
   const status = checkInTime > onTimeLimit ? "Terlambat" : "Hadir";
 
   // 8. Buat record absensi baru
+  // Jika status karyawan adalah 'Cuti', ubah kembali menjadi 'Aktif' saat check-in
+  if (employee && employee.status === "Cuti") {
+    employee.status = "Aktif";
+    await employee.save();
+  }
+
+  // Ambil path foto jika ada
+  const fotoAbsensi = req.file ? `/uploads/attendance/${req.file.filename}` : null;
+
   const attendance = await Attendance.create({
     employeeId,
     tanggal: today,
@@ -74,10 +93,11 @@ export const checkIn = asyncHandler(async (req, res) => {
     keterangan: `Check-in dari lokasi yang valid (${Math.round(
       distance
     )}m dari kantor).`,
+    fotoAbsensi,
   });
 
   res.status(201).json({
-    message: "Absensi masuk berhasil dicatat.",
+    message: `Absensi masuk berhasil dicatat. ${employee.status === "Cuti" ? "Status Anda telah diubah kembali menjadi Aktif." : ""}`.trim(),
     data: {
       jamMasuk: attendance.jamMasuk,
       status: attendance.status,
@@ -146,18 +166,24 @@ export const checkOut = asyncHandler(async (req, res) => {
   }
 
   // 3. Validasi lokasi (sama seperti check-in)
-  const officeLat = parseFloat(process.env.OFFICE_LATITUDE);
-  const officeLon = parseFloat(process.env.OFFICE_LONGITUDE);
-  const maxRadius = parseInt(process.env.MAX_ATTENDANCE_RADIUS, 10);
+  let settings = await Settings.findOne({ settingsId: "app-settings" });
+  
+  // Jika settings belum ada, buat default
+  if (!settings) {
+    settings = await Settings.create({ settingsId: "app-settings" });
+  }
+  
+  const officeLat = settings.officeLatitude;
+  const officeLon = settings.officeLongitude;
+  const maxRadius = settings.maxAttendanceRadius;
   const distance = getDistanceInMeters(latitude, longitude, officeLat, officeLon);
 
   if (distance > maxRadius) {
-    res.status(403);
-    throw new Error(
-      `Anda berada ${Math.round(
+    return res.status(403).json({ 
+      message: `Anda berada ${Math.round(
         distance
-      )} meter dari kantor. Check-out harus dari area kantor.`
-    );
+      )} meter dari kantor. Check-out harus dari area kantor.` 
+    });
   }
 
   // 4. Cari catatan absensi hari ini
@@ -294,6 +320,132 @@ export const getMonthlyStatusRecap = asyncHandler(async (req, res) => {
 
   // 5. Kirim hasilnya
   res.status(200).json(result);
+});
+
+/**
+ * @desc    Mencatat absensi sebagai Cuti oleh Admin
+ * @route   POST /api/attendance/record-leave
+ * @access  Private (Admin)
+ */
+export const recordLeave = asyncHandler(async (req, res) => {
+  // 1. Pastikan yang mengakses adalah admin
+  if (req.user.role !== "admin") {
+    res.status(403);
+    throw new Error("Akses ditolak. Hanya untuk admin.");
+  }
+
+  const { employeeId, tanggal } = req.body;
+
+  // 2. Validasi input
+  if (!employeeId || !tanggal) {
+    res.status(400);
+    throw new Error("ID Karyawan (employeeId) dan tanggal wajib diisi.");
+  }
+
+  // 3. Cari karyawan
+  const employee = await Employee.findById(employeeId);
+  if (!employee) {
+    res.status(404);
+    throw new Error("Karyawan tidak ditemukan.");
+  }
+
+  // 4. Cek apakah sudah ada absensi pada tanggal tersebut
+  const leaveDate = new Date(tanggal);
+  leaveDate.setHours(0, 0, 0, 0);
+
+  const nextDay = new Date(leaveDate);
+  nextDay.setDate(nextDay.getDate() + 1);
+
+  const existingAttendance = await Attendance.findOne({
+    employeeId,
+    tanggal: { $gte: leaveDate, $lt: nextDay },
+  });
+
+  if (existingAttendance) {
+    res.status(400);
+    throw new Error(`Karyawan sudah memiliki catatan absensi (Status: ${existingAttendance.status}) pada tanggal tersebut.`);
+  }
+
+  // 5. Buat catatan absensi Cuti
+  await Attendance.create({
+    employeeId,
+    tanggal: leaveDate,
+    // Atur jam masuk default ke jam 8 pagi pada tanggal cuti
+    jamMasuk: new Date(new Date(leaveDate).setHours(8, 0, 0, 0)),
+    status: "Cuti",
+    keterangan: "Cuti dicatat oleh Admin.",
+  });
+
+  // 6. Ubah status karyawan menjadi 'Cuti'
+  employee.status = "Cuti";
+  await employee.save();
+
+  res.status(201).json({ message: `Absensi cuti untuk ${employee.nama} pada tanggal ${leaveDate.toLocaleDateString('id-ID')} berhasil dicatat. Status karyawan diubah menjadi Cuti.` });
+});
+
+/**
+ * @desc    Mencatat absensi sebagai Cuti oleh Karyawan (untuk hari ini)
+ * @route   POST /api/attendance/request-leave
+ * @access  Private (Employee)
+ */
+export const requestLeave = asyncHandler(async (req, res) => {
+  // 1. Pastikan yang mengakses adalah employee
+  if (req.user.role !== "employee") {
+    res.status(403);
+    throw new Error("Akses ditolak. Hanya untuk karyawan.");
+  }
+
+  const { keterangan } = req.body;
+  const employeeId = req.user.id;
+
+  // 2. Validasi input
+  if (!keterangan) {
+    res.status(400);
+    throw new Error("Keterangan cuti wajib diisi.");
+  }
+
+  // 3. Cari karyawan
+  const employee = await Employee.findById(employeeId);
+  if (!employee) {
+    res.status(404);
+    throw new Error("Karyawan tidak ditemukan.");
+  }
+
+  // 4. Cek apakah sudah ada absensi pada hari ini
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const tomorrow = new Date(today);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+
+  const existingAttendance = await Attendance.findOne({
+    employeeId,
+    tanggal: { $gte: today, $lt: tomorrow },
+  });
+
+  if (existingAttendance) {
+    res.status(400);
+    throw new Error(`Anda sudah memiliki catatan absensi (Status: ${existingAttendance.status}) hari ini.`);
+  }
+
+  // 5. Buat catatan absensi Cuti
+  // Ambil path foto jika ada (opsional untuk cuti)
+  const fotoAbsensi = req.file ? `/uploads/attendance/${req.file.filename}` : null;
+
+  const attendance = await Attendance.create({
+    employeeId,
+    tanggal: today,
+    jamMasuk: new Date(), // <-- Tambahkan jam masuk saat cuti dicatat
+    status: "Cuti",
+    keterangan: keterangan,
+    fotoAbsensi,
+  });
+
+  // 6. Ubah status karyawan menjadi 'Cuti'
+  employee.status = "Cuti";
+  await employee.save();
+
+  res.status(201).json({ message: `Cuti berhasil dicatat untuk hari ini. Status Anda diubah menjadi Cuti.`, data: attendance });
 });
 
 /**

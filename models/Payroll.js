@@ -26,8 +26,7 @@ const PayrollSchema = new mongoose.Schema(
     pendapatanKotor: { type: Number, default: 0 },
 
     // Komponen Potongan
-    potonganAbsensi: { type: Number, default: 0 }, // Untuk hari Alpha/Tanpa Keterangan
-    potonganKeterlambatan: { type: Number, default: 0 },
+    potonganAbsensi: { type: Number, default: 0 }, // Untuk hari Alpha/Tanpa Keterangan    
     potonganLain: { type: Number, default: 0 }, // Untuk BPJS, PPh21, dll.
     totalPotongan: { type: Number, default: 0 },
 
@@ -40,10 +39,8 @@ const PayrollSchema = new mongoose.Schema(
 
     // Detail Perhitungan (untuk transparansi)
     detailPerhitungan: {
-      totalHariHadir: { type: Number, default: 0 },
-      totalHariTerlambat: { type: Number, default: 0 },
-      totalHariCuti: { type: Number, default: 0 },
-      totalHariSakit: { type: Number, default: 0 },
+      totalHariHadir: { type: Number, default: 0 },      
+      totalHariCuti: { type: Number, default: 0 },     
       totalHariAlpha: { type: Number, default: 0 },
     },
 

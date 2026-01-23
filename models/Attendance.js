@@ -29,11 +29,16 @@ const attendanceSchema = new mongoose.Schema(
       enum: ["Hadir", "Terlambat", "Cuti"],
       required: [true, "Status kehadiran wajib diisi"],
     },
-    // Catatan tambahan, misalnya alasan izin atau sakit
+        
     keterangan: {
       type: String,
       trim: true,
       default: "",
+    },
+    // Path foto absensi
+    fotoAbsensi: {
+      type: String,
+      default: null,
     },
   },
   {

@@ -13,8 +13,11 @@ import {
   getTodaysAttendanceActivity,
   getTodaysAttendanceCount,
   getMonthlySummary,
+  recordLeave,
+  requestLeave,
 } from "../controllers/attendanceController.js";
 import verifyToken from "../middlewares/verifyToken.js";
+import upload from "../middlewares/uploadMiddleware.js";
 
 const router = express.Router();
 
@@ -22,13 +25,16 @@ const router = express.Router();
 router.get("/status", verifyToken, getAttendanceStatus);
 
 // @route   POST /api/attendance/check-in
-router.post("/check-in", verifyToken, checkIn);
+router.post("/check-in", verifyToken, upload.single("fotoAbsensi"), checkIn);
 
 // @route   POST /api/attendance/check-out
 router.post("/check-out", verifyToken, checkOut);
 
 // @route   GET /api/attendance/my-history
 router.get("/my-history", verifyToken, getMyAttendanceHistory);
+
+// @route   POST /api/attendance/request-leave
+router.post("/request-leave", verifyToken, upload.single("fotoAbsensi"), requestLeave);
 
 router.get("/payable-days-count", verifyToken, getPayableDaysCount);
 
@@ -49,6 +55,9 @@ router.get("/today-count", verifyToken, getTodaysAttendanceCount);
 
 // @route   GET /api/attendance/monthly-summary (Admin Only)
 router.get("/monthly-summary", verifyToken, getMonthlySummary);
+
+// @route   POST /api/attendance/record-leave (Admin Only)
+router.post("/record-leave", verifyToken, recordLeave);
 
 // @route   PUT /api/attendance/:id (Admin Only)
 router.put("/:id", verifyToken, updateAttendance);

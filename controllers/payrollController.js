@@ -5,7 +5,7 @@ import Payroll from "../models/Payroll.js";
 import mongoose from "mongoose";
 
 /**
- * @desc    Menghasilkan (generate) data gaji untuk semua karyawan aktif pada bulan tertentu
+ * @desc    Menghasilkan (generate) data gaji untuk satu karyawan pada bulan tertentu
  * @route   POST /api/payroll/generate
  * @access  Private (Admin)
  */
@@ -16,12 +16,12 @@ export const generatePayroll = asyncHandler(async (req, res) => {
     throw new Error("Akses ditolak. Hanya untuk admin.");
   }
 
-  const { month, year } = req.query;
+  const { month, year, employeeId } = req.query;
 
   // 2. Validasi input
-  if (!month || !year) {
+  if (!month || !year || !employeeId) {
     res.status(400);
-    throw new Error("Parameter 'month' dan 'year' wajib diisi.");
+    throw new Error("Parameter 'month', 'year', dan 'employeeId' wajib diisi.");
   }
 
   const monthInt = parseInt(month, 10);
@@ -32,109 +32,112 @@ export const generatePayroll = asyncHandler(async (req, res) => {
     throw new Error("Parameter 'month' dan 'year' tidak valid.");
   }
 
+  if (!mongoose.Types.ObjectId.isValid(employeeId)) {
+    res.status(400);
+    throw new Error("Parameter 'employeeId' tidak valid.");
+  }
+
   // 3. Tentukan rentang tanggal untuk bulan yang dipilih
   const startDate = new Date(yearInt, monthInt - 1, 1);
   const endDate = new Date(yearInt, monthInt, 0, 23, 59, 59, 999);
 
-  // 4. Ambil semua karyawan yang berstatus "Aktif" atau "Cuti"
-  const employeesToProcess = await Employee.find({ status: { $in: ["Aktif", "Cuti"] } });
+  // 4. Ambil karyawan berdasarkan pilihan admin (hanya Aktif/Cuti)
+  const employee = await Employee.findOne({
+    _id: employeeId,
+    status: { $in: ["Aktif", "Cuti"] },
+  });
+  if (!employee) {
+    res.status(404);
+    throw new Error("Karyawan tidak ditemukan atau status tidak valid.");
+  }
 
-  let generatedCount = 0;
-  let updatedCount = 0;
+  // 5. Ambil semua data absensi karyawan pada bulan tersebut
+  const attendances = await Attendance.find({
+    employeeId: employee._id,
+    tanggal: { $gte: startDate, $lte: endDate },
+  });
 
-  // 5. Iterasi melalui setiap karyawan untuk menghitung dan menyimpan data gaji
-  for (const employee of employeesToProcess) {
-    // Ambil semua data absensi karyawan pada bulan tersebut
-    const attendances = await Attendance.find({
-      employeeId: employee._id,
-      tanggal: { $gte: startDate, $lte: endDate },
-    });
+  // --- Menghitung Hari Alpha (Tidak Absen) ---
+  const HARI_KERJA_ASUMSI = 30; // Asumsi hari kerja dalam sebulan, bisa disesuaikan
+  let totalHariAlpha = 0;
+  const attendanceDates = new Set(attendances.map(a => new Date(a.tanggal).toDateString()));
 
-    // --- Menghitung Hari Alpha (Tidak Absen) ---
-    const HARI_KERJA_ASUMSI = 30; // Asumsi hari kerja dalam sebulan, bisa disesuaikan
-    let totalHariAlpha = 0;
-    const attendanceDates = new Set(attendances.map(a => new Date(a.tanggal).toDateString()));
-
-    // Loop dari tanggal awal hingga akhir bulan
-    for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
-      const dayOfWeek = d.getDay();
-      // Cek apakah hari ini adalah hari kerja (Senin-Jumat)
-      if (dayOfWeek > 0 && dayOfWeek < 6) {
-        // Cek apakah tidak ada catatan absensi pada hari kerja ini
-        if (!attendanceDates.has(d.toDateString())) {
-          totalHariAlpha++;
-        }
+  // Loop dari tanggal awal hingga akhir bulan
+  for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
+    const dayOfWeek = d.getDay();
+    // Cek apakah hari ini adalah hari kerja (Senin-Jumat)
+    if (dayOfWeek > 0 && dayOfWeek < 6) {
+      // Cek apakah tidak ada catatan absensi pada hari kerja ini
+      if (!attendanceDates.has(d.toDateString())) {
+        totalHariAlpha++;
       }
-    }
-
-    // Hitung rekap absensi
-    const attendanceRecap = {
-      totalHariHadir: attendances.filter((a) => a.status === "Hadir").length,
-      totalHariTerlambat: attendances.filter((a) => a.status === "Terlambat").length,
-      totalHariCuti: attendances.filter((a) => a.status === "Cuti").length,      
-      totalHariAlpha: totalHariAlpha, // Hasil perhitungan Alpha
-    };
-
-    // a. Hitung Pendapatan
-    const totalTunjangan =
-      (employee.tunjanganJabatan || 0) +
-      (employee.tunjanganTransport || 0) +
-      (employee.tunjanganMakan || 0);
-    const pendapatanKotor = (employee.gajiPokok || 0) + totalTunjangan;
-
-    // --- Logika Perhitungan Gaji Baru (Prorata berdasarkan kehadiran) ---
-
-    // b. Hitung total hari yang dibayar (Hadir, Terlambat, Cuti, dll.)
-    const totalHariDibayar = 
-      attendanceRecap.totalHariHadir + 
-      attendanceRecap.totalHariTerlambat + 
-      attendanceRecap.totalHariCuti;     
-
-    // c. Hitung gaji bersih berdasarkan prorata kehadiran
-    const pendapatanPerHari = pendapatanKotor / HARI_KERJA_ASUMSI;
-    const gajiBersih = pendapatanPerHari * totalHariDibayar;
-
-    // d. Hitung total potongan sebagai selisihnya
-    const totalPotongan = pendapatanKotor - gajiBersih;
-    const potonganAbsensi = totalPotongan; // Semua potongan dianggap karena absensi
-
-    // 6. Siapkan data untuk disimpan ke model Payroll
-    const payrollData = {
-      employeeId: employee._id,
-      bulan: monthInt,
-      tahun: yearInt,
-      gajiPokok: employee.gajiPokok,
-      tunjanganJabatan: employee.tunjanganJabatan,
-      tunjanganTransport: employee.tunjanganTransport,
-      tunjanganMakan: employee.tunjanganMakan,
-      totalTunjangan,
-      pendapatanKotor,
-      potonganAbsensi,
-      potonganLain: 0, // Potongan lain akan diisi manual
-      totalPotongan,
-      gajiBersih,
-      detailPerhitungan: attendanceRecap,
-      generatedBy: req.user.id,
-    };
-
-    // 7. Gunakan findOneAndUpdate dengan 'upsert' untuk membuat atau memperbarui
-    // Ini mencegah duplikasi jika admin menjalankan proses ini lebih dari sekali
-    const result = await Payroll.findOneAndUpdate(
-      { employeeId: employee._id, bulan: monthInt, tahun: yearInt },
-      payrollData,
-      { new: true, upsert: true, runValidators: true }
-    );
-
-    if (result.createdAt.getTime() === result.updatedAt.getTime()) {
-      generatedCount++;
-    } else {
-      updatedCount++;
     }
   }
 
+  // Hitung rekap absensi
+  const attendanceRecap = {
+    totalHariHadir: attendances.filter((a) => a.status === "Hadir").length,
+    totalHariTerlambat: attendances.filter((a) => a.status === "Terlambat").length,
+    totalHariCuti: attendances.filter((a) => a.status === "Cuti").length,
+    totalHariAlpha: totalHariAlpha, // Hasil perhitungan Alpha
+  };
+
+  // a. Hitung Pendapatan
+  const totalTunjangan =
+    (employee.tunjanganJabatan || 0) +
+    (employee.tunjanganTransport || 0) +
+    (employee.tunjanganMakan || 0);
+  const pendapatanKotor = (employee.gajiPokok || 0) + totalTunjangan;
+
+  // --- Logika Perhitungan Gaji Baru (Prorata berdasarkan kehadiran) ---
+
+  // b. Hitung total hari yang dibayar (Hadir, Terlambat, Cuti, dll.)
+  const totalHariDibayar =
+    attendanceRecap.totalHariHadir +
+    attendanceRecap.totalHariTerlambat +
+    attendanceRecap.totalHariCuti;
+
+  // c. Hitung gaji bersih berdasarkan prorata kehadiran
+  const pendapatanPerHari = pendapatanKotor / HARI_KERJA_ASUMSI;
+  const gajiBersih = pendapatanPerHari * totalHariDibayar;
+
+  // d. Hitung total potongan sebagai selisihnya
+  const totalPotongan = pendapatanKotor - gajiBersih;
+  const potonganAbsensi = totalPotongan; // Semua potongan dianggap karena absensi
+
+  // 6. Siapkan data untuk disimpan ke model Payroll
+  const payrollData = {
+    employeeId: employee._id,
+    bulan: monthInt,
+    tahun: yearInt,
+    gajiPokok: employee.gajiPokok,
+    tunjanganJabatan: employee.tunjanganJabatan,
+    tunjanganTransport: employee.tunjanganTransport,
+    tunjanganMakan: employee.tunjanganMakan,
+    totalTunjangan,
+    pendapatanKotor,
+    potonganAbsensi,
+    potonganLain: 0, // Potongan lain akan diisi manual
+    totalPotongan,
+    gajiBersih,
+    detailPerhitungan: attendanceRecap,
+    generatedBy: req.user.id,
+  };
+
+  // 7. Gunakan findOneAndUpdate dengan 'upsert' untuk membuat atau memperbarui
+  // Ini mencegah duplikasi jika admin menjalankan proses ini lebih dari sekali
+  const result = await Payroll.findOneAndUpdate(
+    { employeeId: employee._id, bulan: monthInt, tahun: yearInt },
+    payrollData,
+    { new: true, upsert: true, runValidators: true }
+  );
+
+  const generatedCount = result.createdAt.getTime() === result.updatedAt.getTime() ? 1 : 0;
+  const updatedCount = generatedCount === 1 ? 0 : 1;
+
   res.status(200).json({
     message: "Proses pembuatan gaji selesai.",
-    totalKaryawanDiproses: employeesToProcess.length,
+    totalKaryawanDiproses: 1,
     slipGajiDibuat: generatedCount,
     slipGajiDiperbarui: updatedCount,
   });
